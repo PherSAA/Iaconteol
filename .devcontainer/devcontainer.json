@@ -1,0 +1,14 @@
+{
+  "name": "Split Run Genesis",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "forwardPorts": [
+    8765
+  ],
+  "portsAttributes": {
+    "8765": {
+      "label": "Split Run privado",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "python -m unittest discover -p 'test_*.py' -v"
+}

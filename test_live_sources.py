@@ -28,10 +28,11 @@ class SourceTests(unittest.TestCase):
    called.append(url)
    if "earthquake" in url:return {"features":[]}
    if "jpl" in url:return {"fields":["des","dist"],"data":[]}
+   if "bsky" in url:return {"posts":[]}
    return [[1700000000,90,110,100,105,10],[1700003600,90,120,105,110,11],[1700007200,90,120,110,115,12]]
   monitor=LiveMonitor(sample)
   first=monitor.refresh()
   self.assertEqual(first["sources"]["usgs"]["status"],"ok")
   monitor.refresh()
-  self.assertEqual(len(called),6)
+  self.assertEqual(len(called),8)
 if __name__=="__main__":unittest.main()

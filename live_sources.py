@@ -91,7 +91,7 @@ class LiveMonitor:
         self.lock=threading.Lock()
         self.snapshot={"updated_at":None,"sources":{}}
         self.updated={}
-        self.intervals={"usgs":75,"nasa":3600,"crypto":120}
+        self.intervals={"usgs":75,"nasa":3600,"crypto":120,"social":600}
     def refresh(self,force=False):
         now=time.monotonic()
         with self.lock:
@@ -102,6 +102,9 @@ class LiveMonitor:
                     source=URL_USGS;value=earthquakes(self.fetcher(source))
                 elif key=="nasa":
                     source=URL_NASA;value=asteroids(self.fetcher(source))
+                elif key=="social":
+                    source=URL_BLUESKY
+                    value={topic:social_posts(topic,self.fetcher) for topic in ("earthquake","bitcoin")}
                 else:
                     source="https://api.exchange.coinbase.com"
                     value=cryptos(self.fetcher)
@@ -109,7 +112,7 @@ class LiveMonitor:
                 row={"status":"ok","source":source,"retrieved_at":iso(),"data":value}
             except Exception as ex:
                 with self.lock:previous=self.snapshot["sources"].get(key,{})
-                row={"status":"error","source":previous.get("source",{"usgs":URL_USGS,"nasa":URL_NASA,"crypto":"https://api.exchange.coinbase.com"}[key]),
+                row={"status":"error","source":previous.get("source",{"usgs":URL_USGS,"nasa":URL_NASA,"crypto":"https://api.exchange.coinbase.com","social":URL_BLUESKY}[key]),
                     "retrieved_at":iso(),"error":str(ex)[:240],
                     "stale_data":previous.get("data") or previous.get("stale_data"),
                     "last_success":previous.get("retrieved_at") if previous.get("status")=="ok" else previous.get("last_success")}

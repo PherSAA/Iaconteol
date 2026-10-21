@@ -1,5 +1,7 @@
 """Servidor de desarrollo Split Run Genesis. Mantener puerto privado."""
-import json, os, urllib.request
+import json, os, urllib.request, time, datetime
+from urllib.parse import urlencode
+from crypto_analysis import ALLOWED_PRODUCTS, GRANULARITIES, parse_candles
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from engine import Network, submit
@@ -49,6 +51,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({"id":submit(data["kind"],{"n":int(data.get("n",1000))},n.path)})
             if self.path=="/api/kill":
                 return self.reply({"ok":n.kill(int(data["id"]))})
+            if self.path=="/api/crypto/live":
+                product=str(data.get("product","BTC-USD")).upper()
+                granularity=str(data.get("granularity","ONE_HOUR")).upper()
+                if product not in ALLOWED_PRODUCTS or granularity not in GRANULARITIES:raise ValueError("Mercado o intervalo no permitido")
+                span={"ONE_HOUR":3600,"SIX_HOUR":21600,"ONE_DAY":86400}[granularity]
+                end=int(time.time());start=end-span*100
+                query=urlencode({"start":str(start),"end":str(end),"granularity":granularity,"limit":"100"})
+                url="https://api.coinbase.com/api/v3/brokerage/market/products/"+product+"/candles?"+query
+                req=urllib.request.Request(url,headers={"User-Agent":"SplitRunGenesis/1.1","Accept":"application/json"})
+                with urllib.request.urlopen(req,timeout=12) as r:raw=r.read(1500001)
+                if len(raw)>1500000:raise ValueError("Datos demasiado grandes")
+                obj=json.loads(raw)
+                if not isinstance(obj,dict) or not isinstance(obj.get("candles"),list):raise ValueError("Coinbase no devolvió velas válidas; prueba más tarde")
+                payload={"product":product,"candles":obj["candles"]}
+                parse_candles(payload)
+                tid=submit("crypto_candles",payload,n.path)
+                return self.reply({"submitted":1,"id":tid,"source":"Coinbase Advanced public market candles","product":product})
             if self.path=="/api/public/example":
                 feed="asteroid";obj=NASA_EXAMPLE;source="Ejemplo ilustrativo; no es consulta NASA en vivo"
             elif self.path=="/api/public/import":
@@ -56,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path=="/api/public/live":
                 feed=data.get("feed","earthquake")
                 urls={"earthquake":"https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson",
-                      "asteroid":"https://ssd-api.jpl.nasa.gov/cad.api?date-min=2026-10-20&date-max=2026-11-20&dist-max=10LD&limit=100"}
+                      "asteroid":"https://ssd-api.jpl.nasa.gov/cad.api?date-min=now&date-max=%2B30&dist-max=10LD&limit=100"}
                 if feed not in urls:raise ValueError("Fuente no permitida")
                 req=urllib.request.Request(urls[feed],headers={"User-Agent":"SplitRunGenesisResearch/1.0"})
                 with urllib.request.urlopen(req,timeout=12) as r:

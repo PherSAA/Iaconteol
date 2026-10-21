@@ -39,3 +39,21 @@ El benchmark se ejecuta con base SQLite temporal e informa tiempos reales, tarea
 3. Analizar criptomonedas con datos históricos, sin trading.
 4. Comparar estrategias de asignación, checkpoint y respaldo por desfase frente a baselines. La geometría de La Llave permanece intacta.
 5. Solo después, integrar agentes de IA, comunicación entre dispositivos y autenticación.
+
+
+## Genesis LIVE — 21 de octubre de 2026
+El panel ahora agrega una zona «Red de información viva» con:
+- USGS: eventos de magnitud ≥2.5 en las últimas 24 horas, con hora UTC, magnitud, profundidad y vínculo a USGS. La fuente actualiza sus feeds aproximadamente cada minuto.
+- NASA/JPL: acercamientos de asteroides dentro de 10 distancias lunares previstos en los próximos 30 días, con fecha de acercamiento.
+- Coinbase Exchange: cuatro pares (BTC-USD, ETH-USD, SOL-USD, XRP-USD), velas horarias históricas, último cierre, cambio relativo de 24 velas y SMA20. Los cierres de velas **no son un ticker de cotizaciones de segundo a segundo**.
+- Bluesky: búsqueda manual de publicaciones públicas por palabra clave y fecha, si el proveedor permite consultas anónimas. Las publicaciones son opiniones no verificadas y no suponen análisis de todas las redes sociales.
+
+El backend intenta actualizar USGS cada 75 segundos, cripto cada 120 segundos y NASA cada hora; consulta fuentes en serie con límites de tiempo y conserva el último estado en memoria. Puedes pulsar «Consultar ahora» para forzar la consulta. Si una API falla, el panel muestra un error, sin inventar resultados. El monitor funciona **solo mientras el proceso de Python permanezca activo**. El Codespace puede suspenderse o detenerse; no es un servidor público 24/7.
+
+**En el móvil:** usa la terminal de Codespaces para escribir \`git pull origin main\`. Detén el servidor anterior pulsando **Ctrl+C en la terminal donde se ejecuta**; si el puerto 8765 está ocupado, localiza y detén esa terminal antes de iniciar otro servidor. Luego ejecuta \`SPLIT_HOST=0.0.0.0 python server.py\` y abre el puerto 8765 desde «Ports». No hagas público el puerto: el proyecto aún no tiene autenticación.
+
+**Predicción sísmica:** la USGS indica que no existe técnica científica demostrada que prediga cuándo, dónde y de qué magnitud será un terremoto. Podremos estudiar peligrosidad de largo plazo y anomalías observadas, pero no publicar predicciones infundadas.
+
+**Predicción cripto:** los datos permiten análisis descriptivo. Antes de cualquier pronóstico habrá que crear un conjunto histórico, hacer pruebas cronológicas fuera de muestra, comparar baselines, incluir costos/errores y mostrar intervalos de incertidumbre. No hay señales de compra/venta automática.
+
+**Presupuesto:** para mantenernos dentro de USD 500, empezar sin hardware, con Codespaces de uso limitado y APIs públicas, revisar cuotas y costos antes de activar servicios de pago. La operación 24/7 requerirá hosting, tareas programadas, persistencia, control de gastos, seguridad y monitoreo continuo.

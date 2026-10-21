@@ -1,6 +1,7 @@
 """Split Run Genesis: workers independientes y cola persistente SQLite."""
 import hashlib, json, multiprocessing as mp, os, sqlite3, threading, time, uuid
 from pathlib import Path
+from crypto_analysis import analyze
 
 DB = os.getenv("SPLIT_DB", "genesis.sqlite3")
 POINTS = [(-3,0),(0,3),(3,3),(3,0),(3,-3),(0,-3),(-3,-3),(-3,3)]
@@ -25,7 +26,7 @@ def event(db,typ,detail):
     db.execute("INSERT INTO events(at,type,detail) VALUES(?,?,?)",(time.time(),typ,str(detail)))
 
 def submit(kind,payload,path=DB):
-    if kind not in ("sum_squares","sha256_chain","earthquake","asteroid"):
+    if kind not in ("sum_squares","sha256_chain","earthquake","asteroid","crypto_candles"):
         raise ValueError("Tipo de tarea no admitido")
     tid=uuid.uuid4().hex
     with connect(path) as db:
@@ -34,6 +35,7 @@ def submit(kind,payload,path=DB):
     return tid
 
 def compute(kind,p):
+    if kind=="crypto_candles":return analyze(p)
     if kind=="sum_squares":
         n=int(p.get("n",100)); assert 0<=n<=1000000
         return {"sum":n*(n+1)*(2*n+1)//6}
@@ -73,7 +75,7 @@ def work(worker_id,path,stop):
                     db.execute("COMMIT")
                 except Exception as exc:
                     db.execute("BEGIN IMMEDIATE")
-                    db.execute("UPDATE tasks SET status='failed',result=?,finished=? WHERE id=?",(json.dumps({"error":str(exc)}),time.time(),tid))
+                    db.execute("UPDATE tasks SET status='failed',result=?,finished=? WHERE id=? AND status='running' AND worker=?",(json.dumps({"error":str(exc)}),time.time(),tid,worker_id))
                     db.execute("COMMIT")
             except sqlite3.OperationalError:
                 try:db.execute("ROLLBACK")
@@ -84,11 +86,18 @@ def work(worker_id,path,stop):
 class Network:
     def __init__(self,path=DB,count=8):
         self.path=str(path);self.count=count;initialize(self.path)
+        with connect(self.path) as db:
+            orphaned=db.execute("UPDATE tasks SET status='pending',worker=NULL WHERE status='running'").rowcount
+            if orphaned:event(db,"restart_requeued",orphaned)
         self.stop=mp.Event();self.processes={};self.guard=threading.Lock()
-        self.closed=False;self.started=time.monotonic()
+        self.closed=False;self.started=time.monotonic();self.base_done=self._done_count();self.initial_restarts=self._event_count("worker_restarted")
         for i in range(1,count+1):self.launch(i)
         self.supervisor=threading.Thread(target=self.monitor,daemon=True)
         self.supervisor.start()
+    def _done_count(self):
+        with connect(self.path) as db:return db.execute("SELECT COUNT(*) FROM tasks WHERE status='done'").fetchone()[0]
+    def _event_count(self,typ):
+        with connect(self.path) as db:return db.execute("SELECT COUNT(*) FROM events WHERE type=?",(typ,)).fetchone()[0]
     def launch(self,i):
         p=mp.Process(target=work,args=(i,self.path,self.stop),daemon=True,name=f"Cell-{i}")
         p.start();self.processes[i]=p
@@ -112,11 +121,17 @@ class Network:
         with connect(self.path) as db:
             stats={k:db.execute("SELECT COUNT(*) FROM tasks WHERE status=?",(k,)).fetchone()[0] for k in ("pending","running","done","failed")}
             logs=db.execute("SELECT at,type,detail FROM events ORDER BY id DESC LIMIT 25").fetchall()
+            restarts=db.execute("SELECT COUNT(*) FROM events WHERE type='worker_restarted'").fetchone()[0]
+            duplicate=db.execute("SELECT COUNT(*)-COUNT(DISTINCT id) FROM tasks WHERE status='done'").fetchone()[0]
+            retries=db.execute("SELECT COUNT(*) FROM tasks WHERE attempts>1").fetchone()[0]
+            latency=db.execute("SELECT AVG(finished-created) FROM tasks WHERE status='done'").fetchone()[0]
         with self.guard:
             nodes=[{"id":i,"alive":p.is_alive(),"pid":p.pid,
                     "x":POINTS[i-1][0],"y":POINTS[i-1][1]} for i,p in self.processes.items()]
         return {"stats":stats,"cells":nodes,"events":[{"at":a,"type":t,"detail":d} for a,t,d in logs],
-                "throughput_tasks_per_second":round(stats["done"]/max(time.monotonic()-self.started,.001),2)}
+                "throughput_tasks_per_second":round(max(0,stats["done"]-self.base_done)/max(time.monotonic()-self.started,.001),2),
+                "restarts":restarts,"duplicate_completion_records":duplicate,"attempts_retried":retries,
+                "average_task_latency_seconds":round(latency or 0,4)}
     def report(self):
         s=self.state()
         with connect(self.path) as db:

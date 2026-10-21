@@ -1,10 +1,11 @@
 """Servidor de desarrollo Split Run Genesis. Mantener puerto privado."""
-import json, os, urllib.request, time, datetime
+import json, os, urllib.request, time, datetime, threading
 from urllib.parse import urlencode
 from crypto_analysis import ALLOWED_PRODUCTS, GRANULARITIES, parse_candles
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from engine import Network, submit
+from live_sources import LiveMonitor, social_posts
 ROOT=Path(__file__).resolve().parent
 NASA_EXAMPLE={"fields":["des","dist"],"data":[["2015 AB","0.003"],["2010 XY","0.007"],["2020 AC","0.014"]]}
 def parse_rows(kind,obj):
@@ -28,6 +29,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         n=self.server.network
         if self.path=="/api/state":return self.reply(n.state())
+        if self.path=="/api/live/dashboard":return self.reply(self.server.monitor.current())
         if self.path=="/api/report":return self.reply(n.report())
         if self.path=="/api/results":return self.reply(n.results())
         if self.path in ("/","/index.html"):
@@ -42,6 +44,10 @@ class Handler(BaseHTTPRequestHandler):
             if size<0 or size>1500000:raise ValueError("Tamaño de petición inválido")
             data=json.loads(self.rfile.read(size)) if size else {}
             n=self.server.network
+            if self.path=="/api/live/refresh":
+                return self.reply(self.server.monitor.refresh(force=True))
+            if self.path=="/api/live/social":
+                return self.reply(social_posts(data.get("query","")))
             if self.path=="/api/batch":
                 count=int(data.get("count",100))
                 if not 1<=count<=1000:raise ValueError("count debe ser 1..1000")
@@ -94,7 +100,14 @@ if __name__=="__main__":
     n=Network(os.getenv("SPLIT_DB",str(ROOT/"genesis.sqlite3")))
     host=os.getenv("SPLIT_HOST","127.0.0.1");port=int(os.getenv("SPLIT_PORT","8765"))
     http=ThreadingHTTPServer((host,port),Handler);http.network=n
+    http.monitor=LiveMonitor()
+    halt=threading.Event()
+    def refresh_loop():
+        while not halt.is_set():
+            http.monitor.refresh()
+            halt.wait(60)
+    watcher=threading.Thread(target=refresh_loop,daemon=True,name="live-monitor");watcher.start()
     print(f"Split Run Genesis: http://{host}:{port}",flush=True)
     try:http.serve_forever()
     except KeyboardInterrupt:pass
-    finally:http.server_close();n.close()
+    finally:halt.set();http.server_close();n.close()

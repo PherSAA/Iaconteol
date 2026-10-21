@@ -45,8 +45,8 @@ el('add').onclick=()=>post('/api/batch',{count:100,kind:'sum_squares',n:200});el
   <div class="liveCard"><h4>🌎 USGS — Actividad sísmica</h4><div class="liveMeta" id="metaUs">Sin datos</div><div class="liveRows" id="liveUs">Cargando datos públicos...</div></div>
   <div class="liveCard"><h4>☄️ NASA/JPL — Acercamientos</h4><div class="liveMeta" id="metaNa">Sin datos</div><div class="liveRows" id="liveNa">Cargando datos públicos...</div></div>
   <div class="liveCard"><h4>₿ Crypto — Mercado histórico</h4><div class="liveMeta" id="metaCr">Sin datos</div><div class="liveRows" id="liveCr">Cargando datos públicos...</div></div>
-  <div class="liveCard"><h4>💬 Bluesky — Publicaciones públicas</h4><div class="liveMeta">Búsqueda bajo demanda; puede requerir autenticación o estar limitada por proveedor.</div>
-   <input id="socialQuery" maxlength="70" value="bitcoin" aria-label="Tema de búsqueda"/><button id="socialSearch">Buscar</button><div class="liveRows" id="liveSocial"></div></div>
+  <div class="liveCard"><h4>💬 Bluesky — Publicaciones públicas</h4><div class="liveMeta">Observación automática de temas bitcoin y earthquake cada 10 minutos mientras el servidor esté activo; consultas adicionales bajo demanda.</div>
+   <input id="socialQuery" maxlength="70" value="bitcoin" aria-label="Tema de búsqueda"/><button id="socialSearch">Buscar</button><div class="liveRows" id="liveSocial"></div><div class="liveMeta" id="socialAuto"></div></div>
  </div>
  <p class="tip">USGS y NASA/JPL; Coinbase Exchange para precios históricos; Bluesky para opiniones públicas no verificadas. Sin predicción sísmica, sin recomendaciones de inversión ni trading automático. Las consultas pueden fallar por límites de API.</p>
 </section>
@@ -88,6 +88,8 @@ async function loadLive(){
  summary('usgs',$('metaUs'),$('liveUs'),data);
  summary('nasa',$('metaNa'),$('liveNa'),data);
  summary('crypto',$('metaCr'),$('liveCr'),data);
+ const so=data.sources&&data.sources.social;
+ $('socialAuto').textContent=so?(so.status==='ok'?('Última revisión automática: '+new Date(so.retrieved_at).toLocaleString('es')+' · bitcoin: '+(so.data.bitcoin?.count??0)+'; earthquake: '+(so.data.earthquake?.count??0)+' publicaciones encontradas'):('Revisión social no disponible: '+(so.error||'API bloqueada'))):'Esperando revisión social automática';
  }catch(e){$('liveTime').textContent='No se pudo contactar al servidor: '+e.message}
 }
 $('liveRefresh').onclick=async()=>{

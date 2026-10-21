@@ -24,4 +24,87 @@ el('resultsBtn').onclick=showResults;
 el('crypto').onclick=()=>mission("/api/crypto/live",{product:el("coin").value,granularity:"ONE_HOUR"});
 el('import').onclick=async()=>{try{const f=el('jsonfile').files[0];if(!f||f.size>1200000)throw Error('Selecciona un JSON menor a 1,2 MB');const data=JSON.parse(await f.text());mission('/api/public/import',{kind:el('importKind').value,data})}catch(e){el('message').textContent=e.message}};
 el('add').onclick=()=>post('/api/batch',{count:100,kind:'sum_squares',n:200});el('heavy').onclick=()=>post('/api/tasks',{kind:'sha256_chain',n:40000});el('kill').onclick=()=>post('/api/kill',{id:1+Math.floor(Math.random()*8)});canvas.onclick=e=>{const box=canvas.getBoundingClientRect(),x=(e.clientX-box.left)*650/box.width,y=(e.clientY-box.top)*520/box.height;let nearest=-1,dist=999;P.forEach((p,i)=>{let [a,b]=point(p),d=Math.hypot(x-a,y-b);if(d<dist){dist=d;nearest=i}});if(dist<35)post('/api/kill',{id:nearest+1})};el('report').onclick=async()=>{try{const r=await fetch('/api/report');if(!r.ok)throw Error('Sin conexión');const data=await r.json();const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='split_run_genesis_report.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){el('message').textContent=e.message}};refresh();setInterval(refresh,800);
-</script></body></html>
+</script>
+<style>
+#liveLab{max-width:1050px;margin:18px auto 60px;background:linear-gradient(130deg,#102840,#071629);border:1px solid #3b6887;border-radius:20px;padding:16px}
+.liveHeader{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.liveGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.liveCard{background:#0a182b;border:1px solid #27445f;border-radius:13px;padding:12px;min-height:135px}
+.liveCard h4{margin:0 0 7px;color:#8de7e1}
+.liveRows{max-height:280px;overflow:auto;font-size:.83em}
+.liveRow{padding:8px 0;border-bottom:1px solid #2c4055;overflow-wrap:anywhere}
+.liveMeta{font-size:.75em;color:#9bb4ca;margin:4px 0 12px;overflow-wrap:anywhere}
+.liveError{color:#ffbb83}
+.liveCard a{color:#7edbff}
+#socialQuery{min-width:110px;max-width:270px;width:55%}
+</style>
+<section id="liveLab">
+ <div class="liveHeader"><div><small>GENESIS · INTELLIGENCE LAB</small><h2>🌐 Red de información viva</h2><p class="tip">Fechas y fuentes verificables. Recopilación periódica mientras el servidor Codespaces esté encendido.</p></div>
+ <div><button id="liveRefresh" class="primary">↻ Consultar ahora</button><p id="liveTime" class="liveMeta">Esperando primera consulta...</p></div></div>
+ <div class="liveGrid">
+  <div class="liveCard"><h4>🌎 USGS — Actividad sísmica</h4><div class="liveMeta" id="metaUs">Sin datos</div><div class="liveRows" id="liveUs">Cargando datos públicos...</div></div>
+  <div class="liveCard"><h4>☄️ NASA/JPL — Acercamientos</h4><div class="liveMeta" id="metaNa">Sin datos</div><div class="liveRows" id="liveNa">Cargando datos públicos...</div></div>
+  <div class="liveCard"><h4>₿ Crypto — Mercado histórico</h4><div class="liveMeta" id="metaCr">Sin datos</div><div class="liveRows" id="liveCr">Cargando datos públicos...</div></div>
+  <div class="liveCard"><h4>💬 Bluesky — Publicaciones públicas</h4><div class="liveMeta">Búsqueda bajo demanda; puede requerir autenticación o estar limitada por proveedor.</div>
+   <input id="socialQuery" maxlength="70" value="bitcoin" aria-label="Tema de búsqueda"/><button id="socialSearch">Buscar</button><div class="liveRows" id="liveSocial"></div></div>
+ </div>
+ <p class="tip">USGS y NASA/JPL; Coinbase Exchange para precios históricos; Bluesky para opiniones públicas no verificadas. Sin predicción sísmica, sin recomendaciones de inversión ni trading automático. Las consultas pueden fallar por límites de API.</p>
+</section>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+function append(el,txt,url){
+ const node=document.createElement('div');node.className='liveRow';node.textContent=txt;
+ if(url&&/^https:\/\//.test(url)){let a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=' · Fuente';node.appendChild(a)}
+ el.appendChild(node);
+}
+function summary(key,meta,root,obj){
+ const r=obj&&obj.sources&&obj.sources[key];root.replaceChildren();
+ if(!r){meta.textContent='Esperando consulta...';return}
+ const dated=r.retrieved_at?new Date(r.retrieved_at).toLocaleString('es'):'sin fecha';
+ meta.textContent=(r.status==='ok'?'Actualizado: ':'Error al consultar: ')+dated;
+ if(r.status!=='ok'){append(root,'Error: '+(r.error||'sin conexión'));if(r.stale_data)append(root,'Hay información anterior; no es actual.');return}
+ const data=r.data;
+ if(key==='usgs'){
+ append(root,data.count+' eventos de magnitud 2.5+; magnitud mayor: '+(data.largest_magnitude??'N/D')+'.');
+ for(const x of data.recent||[])append(root,'M'+x.magnitude+' · '+x.place+' · '+(x.time||'sin fecha')+' · profundidad '+x.depth_km+' km',x.url);
+ }else if(key==='nasa'){
+ append(root,data.count+' acercamientos bajo el filtro de 10 distancias lunares.');
+ for(const x of data.closest||[])append(root,x.designation+' · '+x.date+' · '+x.lunar_distances+' distancias lunares');
+ }else{
+ for(const [name,p] of Object.entries(data||{})){
+ if(p.error)append(root,name+': sin datos ('+p.error+')');
+ else append(root,name+': </html>
++p.last_close.toLocaleString('en-US')+' · cambio 24 velas '+p.change_24_candles_pct+'% · SMA20 </html>
++p.sma20.toLocaleString('en-US')+' · última vela '+p.last_candle);
+ }
+ }
+}
+async function loadLive(){
+ try{
+ const r=await fetch('/api/live/dashboard',{cache:'no-store'});if(!r.ok)throw Error('servidor no disponible');
+ const data=await r.json();
+ $('liveTime').textContent=data.updated_at?'Última consulta: '+new Date(data.updated_at).toLocaleString('es'):'Sin consultas todavía';
+ summary('usgs',$('metaUs'),$('liveUs'),data);
+ summary('nasa',$('metaNa'),$('liveNa'),data);
+ summary('crypto',$('metaCr'),$('liveCr'),data);
+ }catch(e){$('liveTime').textContent='No se pudo contactar al servidor: '+e.message}
+}
+$('liveRefresh').onclick=async()=>{
+ $('liveRefresh').disabled=true;$('liveTime').textContent='Consultando fuentes...';
+ try{const r=await fetch('/api/live/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(!r.ok)throw Error((await r.json()).error||'sin respuesta')}catch(e){$('liveTime').textContent='Error: '+e.message}
+ $('liveRefresh').disabled=false;loadLive();
+};
+$('socialSearch').onclick=async()=>{
+ const root=$('liveSocial');root.replaceChildren();append(root,'Buscando publicaciones públicas...');
+ try{
+ const r=await fetch('/api/live/social',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:$('socialQuery').value})});
+ const obj=await r.json();if(!r.ok)throw Error(obj.error||'consulta fallida');
+ root.replaceChildren();append(root,obj.count+' publicaciones encontradas; contenido no verificado.');
+ for(const p of obj.posts||[])append(root,p.author+' · '+p.published+': '+p.text,p.url);
+ }catch(e){root.replaceChildren();append(root,'No se pudo buscar: '+e.message)}
+};
+loadLive();setInterval(loadLive,15000);
+})();
+</script>
+</body></html>
